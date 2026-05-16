@@ -995,7 +995,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;font-size:14px;line-height:1.6;-
 <div class="toast" id="toast"></div>
 
 <script>
-const APPS_SCRIPT_URL = "https://script.google.com/a/macros/sidekixhq.com/s/AKfycbzRPWlk_u9FDKlVdRA7yll5wvv4hofOOn7kchJmDxHdQUrOAXndgX6pQH0Z8ZfcXhsrlw/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/a/macros/sidekixhq.com/s/AKfycbzAtHA2-Y-sIHVcv46leYMnehvNMtvnexVea40_KTiyKSegWd7VrulDtXXx-U44mbcJ8w/exec";
 
 const $ = id => document.getElementById(id);
 const fmtD = d => d.toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
@@ -1378,16 +1378,24 @@ async function submitAll(){
       results.push({d, pdf, fname, data});
     }
 
-    // Send to Apps Script
-    for(const {d,data} of results){
-      await fetch(APPS_SCRIPT_URL,{method:"POST",body:JSON.stringify({
-        pdf:data.pdfB64, filename:data.filename,
-        details:{otherName:data.oname,otherAddr:data.oaddr,signerName:data.sigName,
-                 signerTitle:data.sigTitle,signerEmail:data.sigEmail,
-                 document:d==="mnda"?"Mutual NDA":"Advisor Agreement",
-                 effectiveDate:data.ds,timestamp:data.dts}
-      })});
-    }
+    // Send to Apps Script — fire-and-forget, never blocks confirmation
+    (async () => {
+      for(const {d,data} of results){
+        try {
+          await fetch(APPS_SCRIPT_URL, {
+            method: "POST",
+            headers: {"Content-Type": "text/plain"},
+            body: JSON.stringify({
+              pdf: data.pdfB64, filename: data.filename,
+              details: {otherName:data.oname, otherAddr:data.oaddr, signerName:data.sigName,
+                        signerTitle:data.sigTitle, signerEmail:data.sigEmail,
+                        document:d==="mnda"?"Mutual NDA":"Advisor Agreement",
+                        effectiveDate:data.ds, timestamp:data.dts}
+            })
+          });
+        } catch(e){ console.warn("Upload skipped:", e.message); }
+      }
+    })();
 
     $("overlay").classList.remove("show");
     showConfirmation();
@@ -1619,18 +1627,20 @@ async function generatePolicyAck(){
   policyAckFilename = `SideKix_PolicyAcknowledgment_${safe}_${dateStamp}.pdf`;
   policyAckBlob = pdf.output('blob');
 
-  // Also send to Apps Script if configured
+  // Also send to Apps Script — fire-and-forget, never blocks confirmation
   if(APPS_SCRIPT_URL){
-    try {
-      await fetch(APPS_SCRIPT_URL, {method:'POST', body:JSON.stringify({
+    fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'text/plain'},
+      body: JSON.stringify({
         pdf: pdf.output('datauristring').split(',')[1],
         filename: policyAckFilename,
         details: {
           otherName: signerName, otherAddr: '', signerName, signerTitle:'',
           signerEmail, document:'Policy Acknowledgment', effectiveDate:today, timestamp:dts
         }
-      })});
-    } catch(e){ console.warn('Policy ack upload failed:', e.message); }
+      })
+    }).catch(e => console.warn('Policy ack upload skipped:', e.message));
   }
 }
 
