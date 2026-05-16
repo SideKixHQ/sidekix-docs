@@ -1779,9 +1779,9 @@ function showPolicy(idx) {
   if (!alreadyAgreed) {
     policyScrolled[p.id] = false;
     $('policyNextBtn').disabled = true;
-    // Watch scroll
+    // Remove any previous scroll listener before adding new one
+    if(window._policyScrollFn){ window.removeEventListener('scroll', window._policyScrollFn); window._policyScrollFn = null; }
     const docWrap = $('policyDocWrap');
-    docWrap.onscroll = null;
     // Use window scroll since doc is in page flow
     const checkScroll = () => {
       const scrollBottom = window.scrollY + window.innerHeight;
@@ -1794,6 +1794,7 @@ function showPolicy(idx) {
         window.removeEventListener('scroll', checkScroll);
       }
     };
+    window._policyScrollFn = checkScroll;
     window.addEventListener('scroll', checkScroll);
     // Also check immediately in case page is short
     setTimeout(checkScroll, 300);
@@ -1811,7 +1812,7 @@ function showPolicy(idx) {
 function policyNavNext() {
   const p = POLICIES[policyIdx];
   policyAgreed[p.id] = true;
-  window.removeEventListener('scroll', ()=>{});
+  if(window._policyScrollFn){ window.removeEventListener('scroll', window._policyScrollFn); window._policyScrollFn = null; }
 
   if (policyIdx < POLICIES.length - 1) {
     policyIdx++;
