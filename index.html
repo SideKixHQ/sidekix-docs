@@ -995,7 +995,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;font-size:14px;line-height:1.6;-
 <div class="toast" id="toast"></div>
 
 <script>
-const APPS_SCRIPT_URL = "https://script.google.com/a/macros/sidekixhq.com/s/AKfycbzAtHA2-Y-sIHVcv46leYMnehvNMtvnexVea40_KTiyKSegWd7VrulDtXXx-U44mbcJ8w/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwrWcWl7GGoOlgLHZPpHXxfI4Y9s1idK_a94RmE1305IHD34hnYRR0HYNbyrqF2xaQzgg/exec";
 
 const $ = id => document.getElementById(id);
 const fmtD = d => d.toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
@@ -1197,8 +1197,13 @@ function buildDocPDF(d, data) {
   const docTitle = isMNDA ? 'Mutual Non-Disclosure Agreement' : 'Advisor Agreement';
   const docParty = isMNDA ? 'Counterparty' : 'Advisor';
 
+  // Temporarily make the doc element visible so DOM queries work reliably
+  const docEl = document.getElementById(isMNDA ? 'docMNDA' : 'docAdvisor');
+  const prevDisplay = docEl ? docEl.style.display : '';
+  if (docEl && docEl.style.display === 'none') docEl.style.display = '';
+
   function checkPageBreak(currentY, needed) {
-    if (currentY + needed > 278) { pdf.addPage(); return margin; }
+    if (currentY + needed > 282) { pdf.addPage(); return margin; }
     return currentY;
   }
 
@@ -1266,11 +1271,10 @@ function buildDocPDF(d, data) {
   y += 7;
 
   // Document sections — read directly from the DOM
-  const docEl = document.getElementById(isMNDA ? 'docMNDA' : 'docAdvisor');
   const sections = docEl ? docEl.querySelectorAll('.sec') : [];
 
   for(const sec of sections) {
-    y = checkPageBreak(y, 14);
+    y = checkPageBreak(y, 18);
 
     const secN = sec.querySelector('.sec-n')?.textContent || '';
     const h3 = sec.querySelector('h3')?.textContent || '';
@@ -1292,28 +1296,31 @@ function buildDocPDF(d, data) {
       pdf.setFontSize(8.5);
       pdf.setTextColor(58,54,48);
       for(const ln of lines) {
-        y = checkPageBreak(y, 5);
+        y = checkPageBreak(y, 5.5);
         pdf.text(ln, margin+3, y);
-        y += 4.2;
+        y += 4.5;
       }
       y += 2;
     }
 
     for(const li of lis) {
-      y = checkPageBreak(y, 5);
       const liLines = pdf.splitTextToSize('• ' + li, contentW-8);
+      y = checkPageBreak(y, liLines.length * 4.5 + 2);
       pdf.setFont('helvetica','normal');
       pdf.setFontSize(8.5);
       pdf.setTextColor(58,54,48);
       pdf.text(liLines, margin+6, y);
-      y += liLines.length * 4.2 + 1;
+      y += liLines.length * 4.5 + 1;
     }
 
     y += 3;
   }
 
-  // ── Signatures ──
-  y = checkPageBreak(y, 70);
+  // Restore doc element display
+  if (docEl) docEl.style.display = prevDisplay;
+
+  // ── Signatures ── always ensure enough room for full block
+  y = checkPageBreak(y, 90);
   pdf.setDrawColor(216,210,194);
   pdf.line(margin, y, pw-margin, y);
   y += 8;
@@ -1321,8 +1328,8 @@ function buildDocPDF(d, data) {
   pdf.setFont('helvetica','bold');
   pdf.setFontSize(10);
   pdf.setTextColor(28,24,20);
-  pdf.text('Signatures', margin, y);
-  y += 8;
+  pdf.text('Signatures', pw/2, y, {align:'center'});
+  y += 10;
 
   // Two-column signature block
   const colW = (contentW - 10) / 2;
@@ -1334,59 +1341,75 @@ function buildDocPDF(d, data) {
   pdf.setFont('helvetica','bold');
   pdf.setFontSize(8);
   pdf.setTextColor(140,120,72);
-  pdf.text('SIDEKIX (CHARACTER LIMIT LLC)', col1x, y);
-  y += 5;
+  pdf.text('SIDEKIX (CHARACTER LIMIT LLC)', col1x, sigTopY);
 
-  // Signature line
-  pdf.setDrawColor(180,170,160);
-  pdf.line(col1x, y+8, col1x+colW, y+8);
+  // Cursive-style signature (large bold name above the line)
   pdf.setFont('helvetica','bold');
-  pdf.setFontSize(18);
+  pdf.setFontSize(22);
   pdf.setTextColor(28,24,20);
-  pdf.text('James Martucci', col1x, y+6);
-  y += 12;
+  pdf.text('James Martucci', col1x, sigTopY + 14);
+
+  // Signature underline
+  pdf.setDrawColor(60,50,40);
+  pdf.setLineWidth(0.5);
+  pdf.line(col1x, sigTopY + 17, col1x + colW, sigTopY + 17);
+  pdf.setLineWidth(0.2);
 
   pdf.setFont('helvetica','normal');
-  pdf.setFontSize(8);
+  pdf.setFontSize(8.5);
   pdf.setTextColor(58,54,48);
-  pdf.text('Name: James Martucci', col1x, y);  y += 4.5;
-  pdf.text('Title: CEO', col1x, y);  y += 4.5;
-  pdf.text('Email: james@sidekixhq.com', col1x, y);  y += 4.5;
-  pdf.text('Signed: ' + data.dts, col1x, y);
+  let ly = sigTopY + 23;
+  pdf.text('Name: James Martucci', col1x, ly);  ly += 5;
+  pdf.text('Title: CEO', col1x, ly);  ly += 5;
+  pdf.text('Email: james@sidekixhq.com', col1x, ly);  ly += 5;
+  const dtsLines = pdf.splitTextToSize('Signed: ' + data.dts, colW);
+  pdf.text(dtsLines, col1x, ly);
+  let leftBottom = ly + dtsLines.length * 5;
 
-  // ── RIGHT: Advisor ──
-  let ry = sigTopY;
+  // ── RIGHT: Advisor/Counterparty ──
   pdf.setFont('helvetica','bold');
   pdf.setFontSize(8);
   pdf.setTextColor(140,120,72);
-  pdf.text(isMNDA ? 'COUNTERPARTY' : 'ADVISOR', col2x, ry);
-  ry += 5;
+  pdf.text(isMNDA ? 'COUNTERPARTY' : 'ADVISOR', col2x, sigTopY);
 
-  pdf.setDrawColor(180,170,160);
-  pdf.line(col2x, ry+8, col2x+colW, ry+8);
+  // Electronic signature — signer's typed name in large bold
   pdf.setFont('helvetica','bold');
-  pdf.setFontSize(18);
+  pdf.setFontSize(22);
   pdf.setTextColor(28,24,20);
-  pdf.text(data.sigName, col2x, ry+6);
-  ry += 12;
+  pdf.text(data.sigName, col2x, sigTopY + 14);
+
+  // Signature underline
+  pdf.setDrawColor(60,50,40);
+  pdf.setLineWidth(0.5);
+  pdf.line(col2x, sigTopY + 17, col2x + colW, sigTopY + 17);
+  pdf.setLineWidth(0.2);
 
   pdf.setFont('helvetica','normal');
-  pdf.setFontSize(8);
+  pdf.setFontSize(8.5);
   pdf.setTextColor(58,54,48);
-  pdf.text('Name: ' + data.sigName, col2x, ry);  ry += 4.5;
-  if(data.sigTitle){ pdf.text('Title: ' + data.sigTitle, col2x, ry);  ry += 4.5; }
-  if(data.sigEmail){ pdf.text('Email: ' + data.sigEmail, col2x, ry);  ry += 4.5; }
-  pdf.text('Signed: ' + data.dts, col2x, ry);  ry += 4.5;
+  let ry = sigTopY + 23;
+  pdf.text('Name: ' + data.sigName, col2x, ry);  ry += 5;
+  if(data.sigTitle){ pdf.text('Title: ' + data.sigTitle, col2x, ry);  ry += 5; }
+  if(data.sigEmail){ pdf.text('Email: ' + data.sigEmail, col2x, ry);  ry += 5; }
+  const rdtsLines = pdf.splitTextToSize('Signed: ' + data.dts, colW);
+  pdf.text(rdtsLines, col2x, ry);  ry += rdtsLines.length * 5;
 
-  y = Math.max(y, ry) + 6;
+  y = Math.max(leftBottom, ry) + 8;
+
+  // Vertical divider between signature columns
+  pdf.setDrawColor(216,210,194);
+  pdf.line(col2x - 5, sigTopY - 2, col2x - 5, y - 6);
 
   // Legal note
+  y = checkPageBreak(y, 14);
+  pdf.setFillColor(247,243,235);
+  pdf.rect(margin, y-2, contentW, 12, 'F');
   pdf.setFont('helvetica','italic');
   pdf.setFontSize(7.5);
-  pdf.setTextColor(140,130,120);
+  pdf.setTextColor(100,90,80);
   const legalNote = 'Electronic signatures above constitute legally binding acceptance of this Agreement under applicable electronic signature laws (ESIGN Act / UETA).';
-  const legalLines = pdf.splitTextToSize(legalNote, contentW);
-  pdf.text(legalLines, margin, y);
+  const legalLines = pdf.splitTextToSize(legalNote, contentW - 6);
+  pdf.text(legalLines, margin + 3, y + 4);
 
   // Footer on every page
   const pageCount = pdf.internal.getNumberOfPages();
@@ -1502,7 +1525,7 @@ async function generatePolicyAck(){
     const pw = 210, margin = 20, contentW = pw - margin*2;
     let y = margin;
 
-    function checkPB(need){ if(y+need>278){pdf.addPage();y=margin;} }
+    function checkPB(need){ if(y+need>282){pdf.addPage();y=margin;} }
 
     // Gold bar
     pdf.setFillColor(185,160,107);
@@ -1582,9 +1605,9 @@ async function generatePolicyAck(){
         pdf.setFontSize(8.5);
         pdf.setTextColor(58,54,48);
         for(const ln of lines){
-          checkPB(5);
+          checkPB(5.5);
           pdf.text(ln, margin+3, y);
-          y += 4.2;
+          y += 4.5;
         }
         y += 2;
       }
@@ -1592,14 +1615,14 @@ async function generatePolicyAck(){
       // Bullet list
       if(sec.ul){
         for(const item of sec.ul){
-          checkPB(5);
           const txt = item.replace(/&#39;/g,"'").replace(/&amp;/g,'&');
           const liLines = pdf.splitTextToSize('•  ' + txt, contentW-10);
+          checkPB(liLines.length * 4.5 + 2);
           pdf.setFont('helvetica','normal');
           pdf.setFontSize(8.5);
           pdf.setTextColor(58,54,48);
           pdf.text(liLines, margin+7, y);
-          y += liLines.length * 4.2 + 1;
+          y += liLines.length * 4.5 + 1;
         }
         y += 2;
       }
@@ -1608,7 +1631,7 @@ async function generatePolicyAck(){
     }
 
     // Signature / acknowledgment block
-    checkPB(50);
+    checkPB(75);
     pdf.setDrawColor(216,210,194);
     pdf.line(margin,y,pw-margin,y);
     y += 8;
@@ -1617,7 +1640,7 @@ async function generatePolicyAck(){
     pdf.setFontSize(10);
     pdf.setTextColor(28,24,20);
     pdf.text('Electronic Acknowledgment', margin, y);
-    y += 6;
+    y += 7;
 
     const ackText = 'I, ' + signerName + ', confirm that I have read this policy in its entirety and agree to be bound by its terms as part of the SideKix Advisor onboarding process. This electronic acknowledgment is legally binding.';
     const ackLines = pdf.splitTextToSize(ackText, contentW);
@@ -1625,22 +1648,28 @@ async function generatePolicyAck(){
     pdf.setFontSize(9);
     pdf.setTextColor(58,54,48);
     pdf.text(ackLines, margin, y);
-    y += ackLines.length * 4.5 + 8;
+    y += ackLines.length * 4.8 + 10;
 
-    // Signature line
-    pdf.setDrawColor(180,170,160);
-    pdf.line(margin, y+8, margin+80, y+8);
+    checkPB(30);
+
+    // Electronic signature — large bold name
     pdf.setFont('helvetica','bold');
-    pdf.setFontSize(18);
+    pdf.setFontSize(22);
     pdf.setTextColor(28,24,20);
-    pdf.text(signerName, margin, y+6);
-    y += 14;
+    pdf.text(signerName, margin, y);
+
+    // Signature underline
+    pdf.setDrawColor(60,50,40);
+    pdf.setLineWidth(0.5);
+    pdf.line(margin, y+3, margin+90, y+3);
+    pdf.setLineWidth(0.2);
+    y += 10;
 
     pdf.setFont('helvetica','normal');
     pdf.setFontSize(8.5);
     pdf.setTextColor(107,101,96);
-    pdf.text('Name: ' + signerName, margin, y);  y += 4.5;
-    if(signerEmail){ pdf.text('Email: ' + signerEmail, margin, y);  y += 4.5; }
+    pdf.text('Name: ' + signerName, margin, y);  y += 5;
+    if(signerEmail){ pdf.text('Email: ' + signerEmail, margin, y);  y += 5; }
     pdf.text('Signed: ' + dts, margin, y);
 
     // Footer on all pages
