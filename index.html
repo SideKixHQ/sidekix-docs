@@ -1312,8 +1312,8 @@ function buildDocPDF(d, data) {
     y += 3;
   }
 
-  // Signature block
-  y = checkPageBreak(y, 40);
+  // ── Signatures ──
+  y = checkPageBreak(y, 70);
   pdf.setDrawColor(216,210,194);
   pdf.line(margin, y, pw-margin, y);
   y += 8;
@@ -1321,29 +1321,72 @@ function buildDocPDF(d, data) {
   pdf.setFont('helvetica','bold');
   pdf.setFontSize(10);
   pdf.setTextColor(28,24,20);
-  pdf.text('Electronic Signature', margin, y);
-  y += 6;
+  pdf.text('Signatures', margin, y);
+  y += 8;
 
-  pdf.setFont('helvetica','bolditalic');
-  pdf.setFontSize(16);
+  // Two-column signature block
+  const colW = (contentW - 10) / 2;
+  const col1x = margin;
+  const col2x = margin + colW + 10;
+  const sigTopY = y;
+
+  // ── LEFT: SideKix / James Martucci ──
+  pdf.setFont('helvetica','bold');
+  pdf.setFontSize(8);
+  pdf.setTextColor(140,120,72);
+  pdf.text('SIDEKIX (CHARACTER LIMIT LLC)', col1x, y);
+  y += 5;
+
+  // Signature line
+  pdf.setDrawColor(180,170,160);
+  pdf.line(col1x, y+8, col1x+colW, y+8);
+  pdf.setFont('helvetica','bold');
+  pdf.setFontSize(18);
   pdf.setTextColor(28,24,20);
-  pdf.text(data.sigName, margin, y);
-  y += 7;
+  pdf.text('James Martucci', col1x, y+6);
+  y += 12;
 
-  const sigLines = [
-    'Name: ' + data.sigName,
-    data.sigTitle ? 'Title: ' + data.sigTitle : null,
-    data.sigEmail ? 'Email: ' + data.sigEmail : null,
-    'Signed: ' + data.dts,
-    'Electronic signature constitutes legal acceptance of this Agreement.'
-  ].filter(Boolean);
   pdf.setFont('helvetica','normal');
-  pdf.setFontSize(8.5);
-  pdf.setTextColor(107,101,96);
-  for(const ln of sigLines) {
-    pdf.text(ln, margin, y);
-    y += 4.5;
-  }
+  pdf.setFontSize(8);
+  pdf.setTextColor(58,54,48);
+  pdf.text('Name: James Martucci', col1x, y);  y += 4.5;
+  pdf.text('Title: CEO', col1x, y);  y += 4.5;
+  pdf.text('Email: james@sidekixhq.com', col1x, y);  y += 4.5;
+  pdf.text('Signed: ' + data.dts, col1x, y);
+
+  // ── RIGHT: Advisor ──
+  let ry = sigTopY;
+  pdf.setFont('helvetica','bold');
+  pdf.setFontSize(8);
+  pdf.setTextColor(140,120,72);
+  pdf.text(isMNDA ? 'COUNTERPARTY' : 'ADVISOR', col2x, ry);
+  ry += 5;
+
+  pdf.setDrawColor(180,170,160);
+  pdf.line(col2x, ry+8, col2x+colW, ry+8);
+  pdf.setFont('helvetica','bold');
+  pdf.setFontSize(18);
+  pdf.setTextColor(28,24,20);
+  pdf.text(data.sigName, col2x, ry+6);
+  ry += 12;
+
+  pdf.setFont('helvetica','normal');
+  pdf.setFontSize(8);
+  pdf.setTextColor(58,54,48);
+  pdf.text('Name: ' + data.sigName, col2x, ry);  ry += 4.5;
+  if(data.sigTitle){ pdf.text('Title: ' + data.sigTitle, col2x, ry);  ry += 4.5; }
+  if(data.sigEmail){ pdf.text('Email: ' + data.sigEmail, col2x, ry);  ry += 4.5; }
+  pdf.text('Signed: ' + data.dts, col2x, ry);  ry += 4.5;
+
+  y = Math.max(y, ry) + 6;
+
+  // Legal note
+  pdf.setFont('helvetica','italic');
+  pdf.setFontSize(7.5);
+  pdf.setTextColor(140,130,120);
+  const legalNote = 'Electronic signatures above constitute legally binding acceptance of this Agreement under applicable electronic signature laws (ESIGN Act / UETA).';
+  const legalLines = pdf.splitTextToSize(legalNote, contentW);
+  pdf.text(legalLines, margin, y);
 
   // Footer on every page
   const pageCount = pdf.internal.getNumberOfPages();
@@ -1414,7 +1457,7 @@ async function showConfirmation(){
   // Generate policy acknowledgment PDF
   await generatePolicyAck();
 
-  cards.innerHTML=docQueue.map(d=>{
+  const docCards = docQueue.map(d=>{
     const data=signedData[d];
     const label=d==="mnda"?"Mutual NDA":"Advisor Agreement";
     return `<div class="dl-card">
@@ -1424,231 +1467,217 @@ async function showConfirmation(){
       </div>
       <button class="dl-btn" onclick="dlDoc('${d}')">Download PDF</button>
     </div>`;
-  }).join('') + `<div class="dl-card">
+  }).join('');
+
+  const policyCards = policyAckBlobs.map((item,i)=>`<div class="dl-card">
     <div>
-      <div class="dl-card-title">Policy Acknowledgment</div>
-      <div class="dl-card-sub">Community · Payments · Code of Excellence</div>
+      <div class="dl-card-title">${item.title}</div>
+      <div class="dl-card-sub">${item.filename}</div>
     </div>
-    <button class="dl-btn" onclick="dlPolicyAck()">Download PDF</button>
-  </div>`;
+    <button class="dl-btn" onclick="dlPolicyAck(${i})">Download PDF</button>
+  </div>`).join('');
+
+  cards.innerHTML = docCards + policyCards;
 
   showScreen("confirmScreen");
   window.scrollTo(0,0);
 }
 
 // ── Generate Policy Acknowledgment PDF ──
-let policyAckBlob = null;
-let policyAckFilename = '';
+let policyAckBlobs = [];  // array of {blob, filename, title}
 
 async function generatePolicyAck(){
   const {jsPDF} = window.jspdf;
-  const pdf = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
   const today = new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
-  const dts = new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'}) +
-    ' at ' + new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZoneName:'short'});
-
-  // Get signer name from signed data
+  const dts = today + ' at ' + new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZoneName:'short'});
   const signerName = signedData['mnda']?.sigName || signedData['advisor']?.sigName || 'Advisor';
   const signerEmail = signedData['mnda']?.sigEmail || signedData['advisor']?.sigEmail || '';
+  const safe = signerName.replace(/[^a-zA-Z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+  const dateStamp = new Date().toISOString().slice(0,10);
 
-  const pw = 210, margin = 20, contentW = pw - margin*2;
-  let y = margin;
+  policyAckBlobs = [];
 
-  // Gold bar
-  pdf.setFillColor(185,160,107);
-  pdf.rect(0, 0, pw, 4, 'F');
-  y = 16;
+  for(const pol of POLICIES){
+    const pdf = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
+    const pw = 210, margin = 20, contentW = pw - margin*2;
+    let y = margin;
 
-  // Header
-  pdf.setFont('helvetica','bold');
-  pdf.setFontSize(9);
-  pdf.setTextColor(140,120,72);
-  pdf.text('CHARACTER LIMIT LLC · DBA SIDEKIX', pw/2, y, {align:'center'});
-  y += 7;
+    function checkPB(need){ if(y+need>278){pdf.addPage();y=margin;} }
 
-  pdf.setFont('helvetica','bold');
-  pdf.setFontSize(16);
-  pdf.setTextColor(28,24,20);
-  pdf.text('Policy Acknowledgment', pw/2, y, {align:'center'});
-  y += 6;
+    // Gold bar
+    pdf.setFillColor(185,160,107);
+    pdf.rect(0,0,pw,4,'F');
+    y = 16;
 
-  pdf.setFont('helvetica','normal');
-  pdf.setFontSize(9);
-  pdf.setTextColor(107,101,96);
-  pdf.text('Confirmation of Policy Review & Agreement', pw/2, y, {align:'center'});
-  y += 10;
-
-  // Divider
-  pdf.setDrawColor(216,210,194);
-  pdf.line(margin, y, pw-margin, y);
-  y += 8;
-
-  // Signer info
-  pdf.setFont('helvetica','normal');
-  pdf.setFontSize(9);
-  pdf.setTextColor(107,101,96);
-  pdf.text('Acknowledged by:', margin, y);
-  y += 5;
-  pdf.setFont('helvetica','bold');
-  pdf.setFontSize(11);
-  pdf.setTextColor(28,24,20);
-  pdf.text(signerName, margin, y);
-  y += 5;
-  if(signerEmail){
-    pdf.setFont('helvetica','normal');
-    pdf.setFontSize(9);
-    pdf.setTextColor(107,101,96);
-    pdf.text(signerEmail, margin, y);
-    y += 5;
-  }
-  pdf.setFont('helvetica','normal');
-  pdf.setFontSize(9);
-  pdf.setTextColor(107,101,96);
-  pdf.text('Date: ' + today, margin, y);
-  y += 10;
-
-  // Divider
-  pdf.setDrawColor(216,210,194);
-  pdf.line(margin, y, pw-margin, y);
-  y += 8;
-
-  // Intro paragraph
-  pdf.setFont('helvetica','normal');
-  pdf.setFontSize(10);
-  pdf.setTextColor(58,54,48);
-  const intro = 'By completing the SideKix onboarding process on ' + today + ', the above-named individual has read, reviewed, and expressly agreed to the following SideKix platform policies in their entirety:';
-  const introLines = pdf.splitTextToSize(intro, contentW);
-  pdf.text(introLines, margin, y);
-  y += introLines.length * 5 + 8;
-
-  // Policy sections
-  const policies = [
-    {
-      num: '1',
-      title: 'Advisor Community Policy',
-      sub: 'Community Standards, Safety & Participation Guidelines',
-      desc: 'Governing standards for participation, interaction, and conduct within the SideKix Advisor community ecosystem. Covers community behavior expectations, communication standards, prohibited conduct, self-promotion rules, confidentiality within the community, collaboration standards, community spaces & events, reporting & safety, platform actions, and policy updates.'
-    },
-    {
-      num: '2',
-      title: 'Payments & Platform Rules',
-      sub: 'Financial Operations & Marketplace Rules',
-      desc: 'Defines how payments, fees, adjustments, and marketplace financial operations function within the SideKix Platform. Covers payment structure, timing, eligible payments, refunds, adjustments & chargebacks, holds & risk management, platform service fees, promotions & incentives, dispute resolution, taxes & reporting, fraud & abuse policy, and relationship to the Advisor Agreement.'
-    },
-    {
-      num: '3',
-      title: 'Advisor Code of Excellence & Standards',
-      sub: 'Guiding Principles & Behavioral Standards',
-      desc: 'Defines the guiding principles, behavioral expectations, and operational standards for Advisors within the SideKix ecosystem. Covers the role of a SideKix Advisor, core tenets, professional standards, platform integrity & boundaries, confidentiality & trust, prohibited behavior, quality of engagement, platform quality standards, accountability, and living principles.'
-    }
-  ];
-
-  for(const pol of policies){
-    // Check page space
-    if(y > 240){ pdf.addPage(); y = margin; }
-
-    // Policy number + title
-    pdf.setFillColor(247,243,235);
-    pdf.rect(margin, y-4, contentW, 14, 'F');
+    // Header
     pdf.setFont('helvetica','bold');
-    pdf.setFontSize(11);
+    pdf.setFontSize(8);
+    pdf.setTextColor(140,120,72);
+    pdf.text('CHARACTER LIMIT LLC · DBA SIDEKIX', pw/2, y, {align:'center'});
+    y += 6;
+
+    pdf.setFont('helvetica','bold');
+    pdf.setFontSize(14);
     pdf.setTextColor(28,24,20);
-    pdf.text(pol.num + '.  ' + pol.title, margin+4, y+4);
-    y += 14;
+    pdf.text(pol.title, pw/2, y, {align:'center'});
+    y += 5;
 
     pdf.setFont('helvetica','italic');
     pdf.setFontSize(9);
-    pdf.setTextColor(140,120,72);
-    pdf.text(pol.sub, margin+4, y);
+    pdf.setTextColor(107,101,96);
+    pdf.text(pol.sub, pw/2, y, {align:'center'});
     y += 6;
 
     pdf.setFont('helvetica','normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor(107,101,96);
+    pdf.text('Effective Date: ' + today, pw/2, y, {align:'center'});
+    y += 8;
+
+    pdf.setDrawColor(216,210,194);
+    pdf.line(margin,y,pw-margin,y);
+    y += 7;
+
+    // Signer info box
+    pdf.setFillColor(247,243,235);
+    pdf.rect(margin,y-3,contentW,signerEmail?18:14,'F');
+    pdf.setFont('helvetica','bold');
+    pdf.setFontSize(8);
+    pdf.setTextColor(140,120,72);
+    pdf.text('ACKNOWLEDGED BY', margin+4, y+2);
+    pdf.setFont('helvetica','normal');
+    pdf.setFontSize(10);
+    pdf.setTextColor(28,24,20);
+    pdf.text(signerName, margin+4, y+8);
+    if(signerEmail){
+      pdf.setFontSize(8);
+      pdf.setTextColor(107,101,96);
+      pdf.text(signerEmail, margin+4, y+13);
+    }
+    y += signerEmail ? 22 : 18;
+
+    pdf.setDrawColor(216,210,194);
+    pdf.line(margin,y,pw-margin,y);
+    y += 8;
+
+    // All sections of this policy
+    for(const sec of pol.sections){
+      checkPB(16);
+
+      // Section header
+      pdf.setFillColor(247,243,235);
+      pdf.rect(margin,y-3,contentW,10,'F');
+      pdf.setFont('helvetica','bold');
+      pdf.setFontSize(9);
+      pdf.setTextColor(28,24,20);
+      pdf.text('§ ' + sec.n + '  ' + sec.h, margin+3, y+4);
+      y += 12;
+
+      // Body text
+      if(sec.p){
+        // Decode HTML entities
+        const txt = sec.p.replace(/&#39;/g,"'").replace(/&amp;/g,'&').replace(/&quot;/g,'"');
+        const lines = pdf.splitTextToSize(txt, contentW-4);
+        pdf.setFont('helvetica','normal');
+        pdf.setFontSize(8.5);
+        pdf.setTextColor(58,54,48);
+        for(const ln of lines){
+          checkPB(5);
+          pdf.text(ln, margin+3, y);
+          y += 4.2;
+        }
+        y += 2;
+      }
+
+      // Bullet list
+      if(sec.ul){
+        for(const item of sec.ul){
+          checkPB(5);
+          const txt = item.replace(/&#39;/g,"'").replace(/&amp;/g,'&');
+          const liLines = pdf.splitTextToSize('•  ' + txt, contentW-10);
+          pdf.setFont('helvetica','normal');
+          pdf.setFontSize(8.5);
+          pdf.setTextColor(58,54,48);
+          pdf.text(liLines, margin+7, y);
+          y += liLines.length * 4.2 + 1;
+        }
+        y += 2;
+      }
+
+      y += 3;
+    }
+
+    // Signature / acknowledgment block
+    checkPB(50);
+    pdf.setDrawColor(216,210,194);
+    pdf.line(margin,y,pw-margin,y);
+    y += 8;
+
+    pdf.setFont('helvetica','bold');
+    pdf.setFontSize(10);
+    pdf.setTextColor(28,24,20);
+    pdf.text('Electronic Acknowledgment', margin, y);
+    y += 6;
+
+    const ackText = 'I, ' + signerName + ', confirm that I have read this policy in its entirety and agree to be bound by its terms as part of the SideKix Advisor onboarding process. This electronic acknowledgment is legally binding.';
+    const ackLines = pdf.splitTextToSize(ackText, contentW);
+    pdf.setFont('helvetica','normal');
     pdf.setFontSize(9);
     pdf.setTextColor(58,54,48);
-    const descLines = pdf.splitTextToSize(pol.desc, contentW-4);
-    pdf.text(descLines, margin+4, y);
-    y += descLines.length * 4.5 + 6;
+    pdf.text(ackLines, margin, y);
+    y += ackLines.length * 4.5 + 8;
 
-    // Checkmark agreement line
-    pdf.setFillColor(238,245,238);
-    pdf.rect(margin, y-3, contentW, 9, 'F');
-    pdf.setDrawColor(74,124,74);
-    pdf.rect(margin, y-3, contentW, 9, 'S');
+    // Signature line
+    pdf.setDrawColor(180,170,160);
+    pdf.line(margin, y+8, margin+80, y+8);
     pdf.setFont('helvetica','bold');
-    pdf.setFontSize(9);
-    pdf.setTextColor(45,90,45);
-    pdf.text('✓  I have read and agree to this policy  —  ' + dts, margin+4, y+3);
+    pdf.setFontSize(18);
+    pdf.setTextColor(28,24,20);
+    pdf.text(signerName, margin, y+6);
     y += 14;
-  }
 
-  // Divider
-  if(y > 240){ pdf.addPage(); y = margin; }
-  pdf.setDrawColor(216,210,194);
-  pdf.line(margin, y, pw-margin, y);
-  y += 8;
-
-  // Signature line
-  pdf.setFont('helvetica','bold');
-  pdf.setFontSize(10);
-  pdf.setTextColor(28,24,20);
-  pdf.text('Electronic Acknowledgment', margin, y);
-  y += 6;
-  pdf.setFont('helvetica','normal');
-  pdf.setFontSize(9);
-  pdf.setTextColor(107,101,96);
-  const ackText = 'This document confirms that ' + signerName + ' has electronically reviewed and agreed to all policies listed above as part of the SideKix Advisor onboarding process. Electronic acknowledgment is legally binding under applicable law.';
-  const ackLines = pdf.splitTextToSize(ackText, contentW);
-  pdf.text(ackLines, margin, y);
-  y += ackLines.length * 4.5 + 8;
-
-  // Signed line
-  pdf.setFont('helvetica','bold');
-  pdf.setFontSize(10);
-  pdf.setTextColor(28,24,20);
-  pdf.text(signerName, margin, y);
-  y += 5;
-  pdf.setFont('helvetica','normal');
-  pdf.setFontSize(9);
-  pdf.setTextColor(107,101,96);
-  pdf.text('Date: ' + dts, margin, y);
-
-  // Footer
-  const pageCount = pdf.internal.getNumberOfPages();
-  for(let i=1;i<=pageCount;i++){
-    pdf.setPage(i);
     pdf.setFont('helvetica','normal');
-    pdf.setFontSize(8);
-    pdf.setTextColor(180,170,160);
-    pdf.text('Character Limit LLC · DBA SideKix · Confidential & Proprietary', pw/2, 290, {align:'center'});
-  }
+    pdf.setFontSize(8.5);
+    pdf.setTextColor(107,101,96);
+    pdf.text('Name: ' + signerName, margin, y);  y += 4.5;
+    if(signerEmail){ pdf.text('Email: ' + signerEmail, margin, y);  y += 4.5; }
+    pdf.text('Signed: ' + dts, margin, y);
 
-  const safe = signerName.replace(/[^a-zA-Z0-9]+/g,'_').replace(/^_+|_+$/g,'');
-  const dateStamp = new Date().toISOString().slice(0,10);
-  policyAckFilename = `SideKix_PolicyAcknowledgment_${safe}_${dateStamp}.pdf`;
-  policyAckBlob = pdf.output('blob');
+    // Footer on all pages
+    const pc = pdf.internal.getNumberOfPages();
+    for(let i=1;i<=pc;i++){
+      pdf.setPage(i);
+      pdf.setFont('helvetica','normal');
+      pdf.setFontSize(7.5);
+      pdf.setTextColor(180,170,160);
+      pdf.text('Character Limit LLC · DBA SideKix · Confidential & Proprietary · Page '+i+' of '+pc, pw/2, 291, {align:'center'});
+    }
 
-  // Also send to Apps Script — fire-and-forget, never blocks confirmation
-  if(APPS_SCRIPT_URL){
-    fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: {'Content-Type': 'text/plain'},
-      body: JSON.stringify({
-        pdf: pdf.output('datauristring').split(',')[1],
-        filename: policyAckFilename,
-        details: {
-          otherName: signerName, otherAddr: '', signerName, signerTitle:'',
-          signerEmail, document:'Policy Acknowledgment', effectiveDate:today, timestamp:dts
-        }
-      })
-    }).catch(e => console.warn('Policy ack upload skipped:', e.message));
+    const fname = `SideKix_Policy_${pol.id.charAt(0).toUpperCase()+pol.id.slice(1)}_${safe}_${dateStamp}.pdf`;
+    policyAckBlobs.push({ blob: pdf.output('blob'), filename: fname, title: pol.title });
+
+    // Upload to Drive
+    if(APPS_SCRIPT_URL){
+      fetch(APPS_SCRIPT_URL, {
+        method:'POST', headers:{'Content-Type':'text/plain'},
+        body: JSON.stringify({
+          pdf: pdf.output('datauristring').split(',')[1],
+          filename: fname,
+          details:{ otherName:signerName, otherAddr:'', signerName, signerTitle:'',
+                    signerEmail, document:pol.title, effectiveDate:today, timestamp:dts }
+        })
+      }).catch(e=>console.warn('Policy upload skipped:',e.message));
+    }
   }
 }
 
-function dlPolicyAck(){
-  if(!policyAckBlob) return;
+function dlPolicyAck(idx){
+  if(!policyAckBlobs || !policyAckBlobs.length) return;
+  const item = policyAckBlobs[idx];
+  if(!item) return;
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(policyAckBlob);
-  a.download = policyAckFilename;
+  a.href = URL.createObjectURL(item.blob);
+  a.download = item.filename;
   a.click();
 }
 
