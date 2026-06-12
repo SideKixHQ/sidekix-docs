@@ -639,25 +639,25 @@ body{font-family:'DM Sans',system-ui,sans-serif;font-size:14px;line-height:1.6;-
   </div>
   <div class="land-hero">
     <h1>Welcome to<br><em>SideKix.</em></h1>
-    <p>Please read and sign both required agreements, review all platform policies, and submit to complete your onboarding.</p>
+    <p>Please review and sign the required agreement(s), review all platform policies, and submit to complete your onboarding.</p>
     <div class="land-steps">
-      <div class="step"><div class="step-num">1</div><div class="step-text"><strong>Sign both documents</strong>Read, fill out, and sign the Mutual NDA &amp; Advisor Agreement</div></div>
+      <div class="step"><div class="step-num">1</div><div class="step-text"><strong>Sign your documents</strong>Read, fill out, and sign the selected agreement(s)</div></div>
       <div class="step"><div class="step-num">2</div><div class="step-text"><strong>Review 3 policies</strong>Read and agree to the Community, Payments &amp; Code of Excellence policies</div></div>
       <div class="step"><div class="step-num">3</div><div class="step-text"><strong>Submit &amp; download</strong>Submit your documents and download signed copies</div></div>
     </div>
-    <div class="doc-select-title">Required Documents</div>
+    <div class="doc-select-title">Select Documents</div>
     <div class="doc-select-cards">
-      <div class="dsc sel" style="pointer-events:none">
-        <div class="dsc-check" style="background:var(--gold);border-color:var(--gold);color:var(--dark)">✓</div>
+      <div class="dsc sel" id="dsc-mnda" onclick="toggleDoc('mnda',this)">
+        <div class="dsc-check">✓</div>
         <div class="dsc-title">Mutual NDA</div>
         <div class="dsc-desc">Non-disclosure, non-use &amp; intellectual property agreement protecting both parties.</div>
-        <div class="dsc-tag">Required · 24 sections</div>
+        <div class="dsc-tag">24 sections</div>
       </div>
-      <div class="dsc sel" style="pointer-events:none">
-        <div class="dsc-check" style="background:var(--gold);border-color:var(--gold);color:var(--dark)">✓</div>
+      <div class="dsc sel" id="dsc-advisor" onclick="toggleDoc('advisor',this)">
+        <div class="dsc-check">✓</div>
         <div class="dsc-title">Advisor Agreement</div>
         <div class="dsc-desc">Platform advisor agreement covering services, conduct, IP, payments &amp; confidentiality.</div>
-        <div class="dsc-tag">Required · 30 sections</div>
+        <div class="dsc-tag">30 sections</div>
       </div>
     </div>
     <button class="start-btn" id="startBtn" onclick="startFlow()">Continue to Documents →</button>
@@ -939,7 +939,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;font-size:14px;line-height:1.6;-
     </div>
     <div class="review-cards" id="reviewCards"></div>
     <div class="review-info">
-      <strong>What happens next:</strong> Both signed PDFs will be saved to SideKix's secure Google Drive folder and you'll receive download links on the next screen.
+      <strong>What happens next:</strong> Your signed PDF(s) will be saved to SideKix's secure Google Drive folder and you'll receive download links on the next screen.
     </div>
     <button class="submit-btn" id="submitBtn" onclick="submitAll()">Submit Signed Documents →</button>
     <button class="back-link" onclick="goToDoc(currentDocIdx)">← Go back and make changes</button>
@@ -1009,10 +1009,22 @@ let currentDocIdx= 0;           // index in docQueue
 let signedData   = {};          // { mnda: {blob, filename, details}, advisor: {...} }
 let signedAt     = {};          // timestamps per doc
 
-// Both docs always required — no selection needed
+// ── DOCUMENT SELECTION ──
+let selectedSet = { mnda: true, advisor: true };   // both selected by default
+
+function toggleDoc(d, card){
+  selectedSet[d] = !selectedSet[d];
+  card.classList.toggle("sel", selectedSet[d]);
+  const anySelected = selectedSet.mnda || selectedSet.advisor;
+  $("startBtn").disabled = !anySelected;
+}
 
 function startFlow(){
-  docQueue=['mnda','advisor'];
+  docQueue = ['mnda','advisor'].filter(d => selectedSet[d]);
+  if(docQueue.length === 0){
+    toast("Please select at least one document.");
+    return;
+  }
   currentDocIdx=0;
   showDoc(0);
   showScreen("docScreen");
